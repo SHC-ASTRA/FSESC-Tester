@@ -11,17 +11,25 @@ float motorPower = 0;
 int MAX_SPEED = 6000; // [RPM]
 int interval = 1000;
 bool enableDriver;
-bool vescStatus;
+bool vescStatus;	// TODO: disable/enable driver
 u_int32_t lastDriverTime = 0;
 u_int32_t lastRcvTime = 0;
 u_int32_t lastSendTime = 0;
 
-VescUart VESC1; // Front Right
-#define driverUART &Serial2	// motor driver UART port - pico pins 	GP8 & GP9
+/*
+* By default when using the Arduino Cores:
+*   Serial is a virtual Serial port operating over the USB
+*   Serial1 is tied to UART0 on pins 1 and 2
+*   Serial2 may need creating (not for philhower core), and is UART1 on pins 8&9
+*/
 
-void calculateTankControlSpeeds(float magnitude, float direction, float speed);
-void calculateMotorSpeeds(float magnitude, float direction, float speed);
+VescUart VESC1; // Front Right
+// HardwareSerial Serial2;
+#define driverUART &Serial1	// motor driver UART port - pico pins 	GP8 & GP9, teensy pins 0 (RX1) & 1 (TX1)
+
+
 void printVESCStatus();
+void printVESCStatus_readable();
 
 //*******************************
 // Command Handling
@@ -39,14 +47,18 @@ void s()
 
 void setup()
 {
+	// Serial1.setTX(16);
+	// Serial1.setRX(17);
+
 	// Serial Communications
 	cmdSerial.begin(115200);
 
 	// Setup VESC Motors
 
-	Serial2.begin(115200);
+	Serial1.begin(115200);
 
 	VESC1.setSerialPort(driverUART);	// TODO
+	// VESC1.setDebugPort(&cmdSerial);
 
 	if (VESC1.getVescValues())
 	{
@@ -73,6 +85,7 @@ void loop()
 		// Tell VESC to send us its data
 		vescStatus = VESC1.getVescValues();
 		lastDriverTime = millis();
+		// if (!vescStatus) { cmdSerial.println("Unsuccessful Driver status!"); } // #FIXME
 	}
 
 	if (cmdSerial.available())
@@ -89,7 +102,11 @@ void loop()
 		lastRcvTime = millis();
 		motorSpd;
 		lastSendTime = millis();
-		cmdSerial.println("Status: Speed:"+motorSpd);
+		cmdSerial.println("Status: Speed:"+motorSpd); //#FIXME
+	}
+	if (millis() - lastSendTime > 5000)
+	{
+		VESC1.printVescValues();
 	}
 
 	if (millis() - lastRcvTime > 200)
@@ -121,31 +138,50 @@ void parseCommand(String command)
 		motorSpd = (int)constrain(power, -MAX_SPEED, MAX_SPEED);
 		cmdSerial.print("Set RPM to ");
 		cmdSerial.println(motorSpd);
-	} else 
-	{
-	if (motor.equals("set_power"))
-	{
-		motorPower = power;
-		cmdSerial.print("Set power to ");
-		cmdSerial.println(motorPower);
-	}
-	else if (motor.equals("max_power"))
-	{
-		maxPower = power;
-		cmdSerial.print("Set max power to ");
-		cmdSerial.println(power);
-	}
-
-	motorSpd = (int)constrain(motorPower * MAX_SPEED * maxPower, -MAX_SPEED, MAX_SPEED);
-	cmdSerial.print("New Motor speed: ");
-	cmdSerial.println(motorSpd);
-	}
-
-	if (motor.equals("esc_status"))
+	} 
+	else if (motor.equals("esc_status"))
 	{
 		cmdSerial.println("Detailed status:");
-		printVESCStatus();
+		printVESCStatus_readable();
+	} 
+	else
+	{
+		if (motor.equals("set_power"))
+		{
+			motorPower = power;
+			cmdSerial.print("Set power to ");
+			cmdSerial.println(motorPower);
+		}
+		else if (motor.equals("max_power"))
+		{
+			maxPower = power;
+			cmdSerial.print("Set max power to ");
+			cmdSerial.println(power);
+		}
+
+		motorSpd = (int)constrain(motorPower * MAX_SPEED * maxPower, -MAX_SPEED, MAX_SPEED);
+		cmdSerial.print("New Motor speed: ");
+		cmdSerial.println(motorSpd);
 	}
+}
+
+void printVESCStatus_readable()
+{
+	s();
+	cmdSerial.print("ID: ");
+	cmdSerial.println(VESC1.data.id);
+	s();
+	cmdSerial.print("RPM: ");
+	cmdSerial.println(VESC1.data.rpm);
+	s();
+	cmdSerial.print("Inp Voltage: ");
+	cmdSerial.println(VESC1.data.inpVoltage);
+	s();
+	cmdSerial.print("AmpHours: ");
+	cmdSerial.println(VESC1.data.ampHours);
+	s();
+	cmdSerial.print("Tachometer: ");
+	cmdSerial.println(VESC1.data.tachometerAbs);
 }
 
 void printVESCStatus()
